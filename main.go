@@ -27,8 +27,12 @@ func main() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 	log.Println("IT-Doctor Server starting...")
 
-	// ── REST API для Pulse (порт 8765) ────────────────────────────────────────
+	// Инициализация WireGuard (не фатальна если wg не установлен)
+	InitWireGuard()
+
+	// ── REST API для Pulse (порт 8765) + Web UI ───────────────────────────────
 	apiMux := http.NewServeMux()
+	SetupWebRoutes(apiMux)
 	SetupAPIRoutes(apiMux)
 
 	// ── WebSocket Hub для агентов (порт 8766) ─────────────────────────────────
@@ -38,6 +42,7 @@ func main() {
 		fmt.Fprintln(w, "ok")
 	})
 
+	log.Printf("Web UI    → http://0.0.0.0:%s/", PulseAPIPort)
 	log.Printf("REST API  → http://0.0.0.0:%s/api/agents", PulseAPIPort)
 	log.Printf("Agent WS  → ws://0.0.0.0:%s/agent/ws", AgentWSPort)
 

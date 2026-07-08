@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -201,6 +202,12 @@ func SetupAPIRoutes(mux *http.ServeMux) {
 			handleProxy(w, r, agentID, "/api/exec")
 		case "/health":
 			handleProxy(w, r, agentID, "/api/health")
+		case "/screen":
+			handleProxyScreen(w, r, agentID)
+		case "/vpn/setup":
+			handleVPNSetup(w, r, agentID)
+		case "/vpn":
+			handleVPNStatus(w, r, agentID)
 		default:
 			jsonError(w, "unknown endpoint: "+rest, http.StatusNotFound)
 		}
@@ -213,4 +220,91 @@ func SetupAPIRoutes(mux *http.ServeMux) {
 			"agents_total": len(hub.GetAllAgents()),
 		})
 	})
+}
+
+// handleVPNSetup — POST /api/agents/:id/vpn/setup — выдать VPN конфиг
+func handleVPNSetup(w http.ResponseWriter, r *http.Request, agentID string) {
+	if r.Method != http.MethodPost {
+		jsonError(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	_, ok := hub.GetAgent(agentID)
+	if !ok {
+		jsonError(w, "agent not found", http.StatusNotFound)
+		return
+	}
+
+	cfg, err := wgMgr.SetupVPN(agentID)
+	if err != nil {
+		jsonError(w, "vpn setup error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	jsonOK(w, cfg)
+}
+
+// handleVPNStatus — GET /api/agents/:id/vpn — статус VPN
+func handleVPNStatus(w http.ResponseWriter, r *http.Request, agentID string) {
+	if r.Method != http.MethodGet {
+		jsonError(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	_, ok := hub.GetAgent(agentID)
+	if !ok {
+		jsonError(w, "agent not found", http.StatusNotFound)
+		return
+	}
+	status := wgMgr.GetVPNStatus(agentID)
+	jsonOK(w, status)
+}
+
+// handleProxyScreen — GET /api/agents/:id/screen — скриншот агента
+func handleProxyScreen(w http.ResponseWriter, r *http.Request, agentID string) {
+	agent, ok := hub.GetAgent(agentID)
+	if !ok {
+		jsonError(w, "agent not found", http.StatusNotFound)
+		return
+	}
+	if !hub.IsOnline(agentID) {
+		jsonError(w, "agent offline", http.StatusServiceUnavailable)
+		return
+	}
+
+	resp, err := ProxyRequest(agent, http.MethodGet, "/api/screen", nil)
+	if err != nil {
+		jsonError(w, "proxy error: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+
+	if resp.Status != http.StatusOK {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.WriteHeader(resp.Status)
+		w.Write(resp.Body)
+		return
+	}
+
+	// Агент возвращает JSON: {"jpeg_b64": "...base64..."}
+	var result struct {
+		JpegB64 string `json:"jpeg_b64"`
+		Error   string `json:"error"`
+	}
+	if err := json.Unmarshal(resp.Body, &result); err != nil {
+		http.Error(w, "invalid screen response", 500)
+		return
+	}
+	if result.Error != "" {
+		http.Error(w, result.Error, 500)
+		return
+	}
+
+	data, err := base64.StdEncoding.DecodeString(result.JpegB64)
+	if err != nil {
+		http.Error(w, "base64 decode error", 500)
+		return
+	}
+	w.Header().Set("Content-Type", "image/jpeg")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.WriteHeader(http.StatusOK)
+	w.Write(data)
 }

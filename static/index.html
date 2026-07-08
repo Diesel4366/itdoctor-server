@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IT-Doctor Server</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #0d0d0d;
+    --surface:  #161616;
+    --surface2: #1e1e1e;
+    --border:   #2a2a2a;
+    --accent:   #F97316;
+    --accent2:  #fb923c;
+    --text:     #e5e5e5;
+    --muted:    #6b7280;
+    --online:   #22c55e;
+    --offline:  #ef4444;
+    --warn:     #eab308;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  /* ── Header ── */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text);
+    text-decoration: none;
+  }
+
+  .logo-icon {
+    width: 32px;
+    height: 32px;
+    background: var(--accent);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    font-weight: 900;
+    color: #fff;
+  }
+
+  .header-stats {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  .stat-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--online);
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  /* ── Main ── */
+  main {
+    padding: 24px;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+
+  /* ── Page sections ── */
+  .page { display: none; }
+  .page.active { display: block; }
+
+  /* ── Section title ── */
+  .section-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 16px;
+  }
+
+  /* ── Agent Grid ── */
+  .agents-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 16px;
+  }
+
+  /* ── Agent Card ── */
+  .agent-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    cursor: pointer;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+
+  .agent-card:hover {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent)22;
+  }
+
+  .agent-card.offline {
+    opacity: 0.6;
+  }
+
+  .agent-card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+
+  .agent-hostname {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 3px;
+  }
+
+  .agent-ip {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: 'Courier New', monospace;
+  }
+
+  .status-badge {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 100px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    flex-shrink: 0;
+  }
+
+  .status-badge.online {
+    background: #22c55e1a;
+    color: var(--online);
+  }
+
+  .status-badge.offline {
+    background: #ef44441a;
+    color: var(--offline);
+  }
+
+  .status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+  }
+
+  .status-badge.online .status-dot { background: var(--online); }
+  .status-badge.offline .status-dot { background: var(--offline); }
+
+  .agent-meta {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .meta-item {
+    background: var(--surface2);
+    border-radius: 8px;
+    padding: 8px 10px;
+  }
+
+  .meta-label {
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 2px;
+  }
+
+  .meta-value {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    font-family: 'Courier New', monospace;
+  }
+
+  /* ── Detail page ── */
+  .back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--muted);
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 13px;
+    margin-bottom: 24px;
+    padding: 0;
+    transition: color 0.15s;
+  }
+
+  .back-btn:hover { color: var(--text); }
+
+  .detail-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 28px;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .detail-hostname {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+
+  .detail-sub {
+    font-size: 13px;
+    color: var(--muted);
+    font-family: 'Courier New', monospace;
+  }
+
+  .action-buttons {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all 0.15s;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+
+  .btn-primary:hover { background: var(--accent2); border-color: var(--accent2); }
+
+  .btn-secondary {
+    background: var(--surface2);
+    color: var(--text);
+    border-color: var(--border);
+  }
+
+  .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+
+  .btn-danger {
+    background: var(--surface2);
+    color: var(--offline);
+    border-color: var(--border);
+  }
+
+  .btn-danger:hover { background: #ef44441a; border-color: var(--offline); }
+
+  /* ── Detail grid ── */
+  .detail-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+  }
+
+  .card-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 16px;
+  }
+
+  /* ── Progress bars ── */
+  .metric {
+    margin-bottom: 14px;
+  }
+
+  .metric:last-child { margin-bottom: 0; }
+
+  .metric-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 6px;
+    font-size: 13px;
+  }
+
+  .metric-label { color: var(--muted); }
+  .metric-value { font-weight: 600; color: var(--text); }
+
+  .progress {
+    height: 6px;
+    background: var(--surface2);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  .progress-bar {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.5s ease;
+  }
+
+  .progress-bar.low    { background: var(--online); }
+  .progress-bar.medium { background: var(--warn); }
+  .progress-bar.high   { background: var(--offline); }
+
+  /* ── Info rows ── */
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    gap: 12px;
+  }
+
+  .info-row:last-child { border-bottom: none; }
+
+  .info-key { color: var(--muted); flex-shrink: 0; }
+  .info-val { color: var(--text); font-family: 'Courier New', monospace; text-align: right; word-break: break-all; }
+
+  /* ── KKT card ── */
+  .kkt-empty {
+    color: var(--muted);
+    font-size: 13px;
+    text-align: center;
+    padding: 24px 0;
+  }
+
+  /* ── Screen section ── */
+  .screen-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 24px;
+  }
+
+  .screen-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+
+  .screen-preview {
+    display: none;
+    background: #000;
+    border-radius: 8px;
+    overflow: hidden;
+    text-align: center;
+    min-height: 200px;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .screen-preview.active { display: flex; }
+
+  .screen-preview img {
+    max-width: 100%;
+    border-radius: 8px;
+    display: block;
+  }
+
+  .screen-placeholder {
+    color: var(--muted);
+    font-size: 13px;
+    padding: 40px;
+  }
+
+  /* ── VPN badge ── */
+  .vpn-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 100px;
+    background: #8b5cf61a;
+    color: #a78bfa;
+    font-family: 'Courier New', monospace;
+  }
+
+  /* ── Loading / Empty states ── */
+  .loading {
+    color: var(--muted);
+    text-align: center;
+    padding: 60px 20px;
+    font-size: 14px;
+  }
+
+  .spinner {
+    width: 24px;
+    height: 24px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    margin: 0 auto 12px;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Toast ── */
+  #toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-size: 13px;
+    max-width: 320px;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: all 0.2s;
+    pointer-events: none;
+    z-index: 1000;
+  }
+
+  #toast.show {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  #toast.success { border-color: var(--online); color: var(--online); }
+  #toast.error { border-color: var(--offline); color: var(--offline); }
+  #toast.info { border-color: var(--accent); color: var(--accent); }
+
+  /* ── Refresh indicator ── */
+  .refresh-indicator {
+    font-size: 11px;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .refresh-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--muted);
+  }
+
+  .refresh-dot.active {
+    background: var(--accent);
+    animation: pulse-dot 0.5s ease-in-out;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <a class="logo" href="#" onclick="showDashboard()">
+    <div class="logo-icon">IT</div>
+    IT-Doctor Server
+  </a>
+  <div class="header-stats">
+    <div class="stat-badge">
+      <div class="dot"></div>
+      <span id="hdr-online">0 online</span>
+    </div>
+    <span id="hdr-total" style="color: var(--muted)">из 0 агентов</span>
+    <div class="refresh-indicator">
+      <div class="refresh-dot" id="refresh-dot"></div>
+      <span id="refresh-time">—</span>
+    </div>
+  </div>
+</header>
+
+<main>
+  <!-- Dashboard -->
+  <div class="page active" id="page-dashboard">
+    <div class="section-title">Агенты</div>
+    <div class="agents-grid" id="agents-grid">
+      <div class="loading">
+        <div class="spinner"></div>
+        Загрузка агентов...
+      </div>
+    </div>
+  </div>
+
+  <!-- Agent detail -->
+  <div class="page" id="page-detail">
+    <button class="back-btn" onclick="showDashboard()">
+      ← Назад
+    </button>
+    <div class="detail-header">
+      <div>
+        <div class="detail-hostname" id="d-hostname">—</div>
+        <div class="detail-sub" id="d-sub">—</div>
+      </div>
+      <div class="action-buttons">
+        <button class="btn btn-secondary" onclick="refreshDetail()">↻ Обновить</button>
+        <button class="btn btn-primary" onclick="cmdUpdate()">⬆ Обновить агент</button>
+        <button class="btn btn-danger" onclick="cmdReboot()">⟳ Перезагрузить ПК</button>
+      </div>
+    </div>
+
+    <!-- Screen section -->
+    <div class="screen-section">
+      <div class="screen-header">
+        <span class="card-title" style="margin:0">Рабочий стол</span>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary" id="btn-screen" onclick="toggleScreen()">▶ Смотреть экран</button>
+          <button class="btn btn-secondary" id="btn-screen-refresh" onclick="refreshScreen()" style="display:none">↻</button>
+        </div>
+      </div>
+      <div class="screen-preview" id="screen-preview">
+        <div class="screen-placeholder" id="screen-placeholder">
+          Нажмите "Смотреть экран" для захвата рабочего стола
+        </div>
+        <img id="screen-img" src="" alt="" style="display:none;max-width:100%;border-radius:8px;">
+      </div>
+    </div>
+
+    <!-- Metrics -->
+    <div class="detail-grid" id="detail-metrics">
+      <div class="card">
+        <div class="card-title">Системные ресурсы</div>
+        <div class="metric">
+          <div class="metric-header">
+            <span class="metric-label">CPU</span>
+            <span class="metric-value" id="m-cpu">—</span>
+          </div>
+          <div class="progress"><div class="progress-bar" id="pb-cpu" style="width:0%"></div></div>
+        </div>
+        <div class="metric">
+          <div class="metric-header">
+            <span class="metric-label">RAM</span>
+            <span class="metric-value" id="m-ram">—</span>
+          </div>
+          <div class="progress"><div class="progress-bar" id="pb-ram" style="width:0%"></div></div>
+        </div>
+        <div class="metric">
+          <div class="metric-header">
+            <span class="metric-label">Диск C:</span>
+            <span class="metric-value" id="m-disk">—</span>
+          </div>
+          <div class="progress"><div class="progress-bar" id="pb-disk" style="width:0%"></div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Информация</div>
+        <div id="detail-info">
+          <div class="info-row"><span class="info-key">ID</span><span class="info-val" id="d-id">—</span></div>
+          <div class="info-row"><span class="info-key">IP</span><span class="info-val" id="d-ip">—</span></div>
+          <div class="info-row"><span class="info-key">VPN IP</span><span class="info-val" id="d-vpnip">—</span></div>
+          <div class="info-row"><span class="info-key">Версия</span><span class="info-val" id="d-version">—</span></div>
+          <div class="info-row"><span class="info-key">ОС</span><span class="info-val" id="d-os">—</span></div>
+          <div class="info-row"><span class="info-key">Пользователь</span><span class="info-val" id="d-user">—</span></div>
+          <div class="info-row"><span class="info-key">Подключён</span><span class="info-val" id="d-connected">—</span></div>
+          <div class="info-row"><span class="info-key">Последняя связь</span><span class="info-val" id="d-lastseen">—</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Касса (ККТ)</div>
+        <div id="detail-kkt">
+          <div class="kkt-empty">Нет данных о кассе</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<div id="toast"></div>
+
+<script>
+const API = '';  // same origin
+const KEY = 'itdoctor-pulse-key-2025';
+
+let currentAgentId = null;
+let screenInterval = null;
+let screenActive = false;
+let refreshTimer = null;
+
+function h(tag, attrs, ...children) {
+  const el = document.createElement(tag);
+  if (attrs) Object.entries(attrs).forEach(([k,v]) => {
+    if (k === 'class') el.className = v;
+    else if (k === 'style') el.style.cssText = v;
+    else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
+    else el.setAttribute(k, v);
+  });
+  children.forEach(c => el.appendChild(typeof c === 'string' ? document.createTextNode(c) : c));
+  return el;
+}
+
+async function apiFetch(path, opts = {}) {
+  const headers = { 'X-Pulse-Key': KEY, ...(opts.headers || {}) };
+  const res = await fetch(API + path, { ...opts, headers });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+function showToast(msg, type = 'info') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'show ' + type;
+  setTimeout(() => { t.className = ''; }, 3000);
+}
+
+function fmtTime(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleString('ru-RU', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+}
+
+function fmtUptime(sec) {
+  if (!sec) return '—';
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  if (h > 0) return `${h}ч ${m}м`;
+  return `${m}м`;
+}
+
+function barClass(pct) {
+  if (pct < 60) return 'low';
+  if (pct < 85) return 'medium';
+  return 'high';
+}
+
+function setProgress(barId, pct) {
+  const bar = document.getElementById(barId);
+  if (!bar) return;
+  bar.style.width = pct + '%';
+  bar.className = 'progress-bar ' + barClass(pct);
+}
+
+// ── Dashboard ──────────────────────────────────────────────────────────────
+
+function showDashboard() {
+  currentAgentId = null;
+  stopScreen();
+  document.getElementById('page-dashboard').classList.add('active');
+  document.getElementById('page-detail').classList.remove('active');
+  loadAgents();
+}
+
+function showDetail(id) {
+  currentAgentId = id;
+  document.getElementById('page-dashboard').classList.remove('active');
+  document.getElementById('page-detail').classList.add('active');
+  loadDetail(id);
+}
+
+async function loadAgents() {
+  try {
+    const agents = await apiFetch('/api/agents');
+    renderAgents(agents);
+    const online = agents.filter(a => a.online).length;
+    document.getElementById('hdr-online').textContent = online + ' online';
+    document.getElementById('hdr-total').textContent = 'из ' + agents.length + ' агентов';
+  } catch(e) {
+    document.getElementById('agents-grid').innerHTML = '<div class="loading">Ошибка загрузки: ' + e.message + '</div>';
+  }
+  flashRefresh();
+}
+
+function renderAgents(agents) {
+  const grid = document.getElementById('agents-grid');
+  if (!agents || agents.length === 0) {
+    grid.innerHTML = '<div class="loading">Нет подключённых агентов</div>';
+    return;
+  }
+
+  // Sort: online first
+  agents.sort((a, b) => (b.online ? 1 : 0) - (a.online ? 1 : 0));
+
+  grid.innerHTML = '';
+  agents.forEach(a => {
+    const card = document.createElement('div');
+    card.className = 'agent-card' + (a.online ? '' : ' offline');
+    card.onclick = () => showDetail(a.id);
+    card.innerHTML = `
+      <div class="agent-card-header">
+        <div>
+          <div class="agent-hostname">${escHtml(a.hostname || '—')}</div>
+          <div class="agent-ip">${escHtml(a.ip || '—')}</div>
+        </div>
+        <div class="status-badge ${a.online ? 'online' : 'offline'}">
+          <div class="status-dot"></div>
+          ${a.online ? 'Online' : 'Offline'}
+        </div>
+      </div>
+      <div class="agent-meta">
+        <div class="meta-item">
+          <div class="meta-label">Версия</div>
+          <div class="meta-value">${escHtml(a.version || '—')}</div>
+        </div>
+        <div class="meta-item">
+          <div class="meta-label">Последняя связь</div>
+          <div class="meta-value">${fmtTime(a.last_seen)}</div>
+        </div>
+        <div class="meta-item">
+          <div class="meta-label">ID</div>
+          <div class="meta-value" style="font-size:10px">${(a.id || '').slice(0,8)}…</div>
+        </div>
+        <div class="meta-item">
+          <div class="meta-label">VPN</div>
+          <div class="meta-value">${a.vpn_ip ? escHtml(a.vpn_ip) : '—'}</div>
+        </div>
+      </div>
+    `;
+    grid.appendChild(card);
+  });
+}
+
+// ── Detail ─────────────────────────────────────────────────────────────────
+
+async function loadDetail(id) {
+  try {
+    const agent = await apiFetch('/api/agents/' + id);
+    document.getElementById('d-hostname').textContent = agent.hostname || '—';
+    document.getElementById('d-sub').textContent = (agent.online ? 'Online' : 'Offline') + ' • ' + (agent.ip || '—');
+    document.getElementById('d-id').textContent = agent.id || '—';
+    document.getElementById('d-ip').textContent = agent.ip || '—';
+    document.getElementById('d-vpnip').textContent = agent.vpn_ip || '—';
+    document.getElementById('d-version').textContent = agent.version || '—';
+    document.getElementById('d-connected').textContent = fmtTime(agent.connected_at);
+    document.getElementById('d-lastseen').textContent = fmtTime(agent.last_seen);
+
+    if (agent.online) {
+      loadSystemInfo(id);
+      loadKKT(id);
+    }
+  } catch(e) {
+    showToast('Ошибка загрузки агента: ' + e.message, 'error');
+  }
+}
+
+async function loadSystemInfo(id) {
+  try {
+    const s = await apiFetch('/api/agents/' + id + '/system');
+    const ramPct = s.ram_total_mb > 0 ? Math.round(s.ram_used_mb / s.ram_total_mb * 100) : 0;
+    const diskPct = s.disk_total_gb > 0 ? Math.round(s.disk_used_gb / s.disk_total_gb * 100) : 0;
+    const cpuPct = Math.round(s.cpu_percent || 0);
+
+    document.getElementById('m-cpu').textContent = cpuPct + '%';
+    document.getElementById('m-ram').textContent = s.ram_used_mb + ' / ' + s.ram_total_mb + ' МБ';
+    document.getElementById('m-disk').textContent = s.disk_used_gb + ' / ' + s.disk_total_gb + ' ГБ';
+    document.getElementById('d-os').textContent = s.os_version || '—';
+    document.getElementById('d-user').textContent = s.username || '—';
+
+    setProgress('pb-cpu', cpuPct);
+    setProgress('pb-ram', ramPct);
+    setProgress('pb-disk', diskPct);
+  } catch(e) {
+    // Agent offline or not responding
+  }
+}
+
+async function loadKKT(id) {
+  try {
+    const kkt = await apiFetch('/api/agents/' + id + '/kkt');
+    const container = document.getElementById('detail-kkt');
+    if (!kkt || kkt.error || !kkt.serial) {
+      container.innerHTML = '<div class="kkt-empty">Касса не обнаружена</div>';
+      return;
+    }
+    container.innerHTML = `
+      <div class="info-row"><span class="info-key">Серийный №</span><span class="info-val">${escHtml(kkt.serial || '—')}</span></div>
+      <div class="info-row"><span class="info-key">ФН</span><span class="info-val">${escHtml(kkt.fn || '—')}</span></div>
+      <div class="info-row"><span class="info-key">РН ККТ</span><span class="info-val">${escHtml(kkt.rn || '—')}</span></div>
+      <div class="info-row"><span class="info-key">ФФД</span><span class="info-val">${escHtml(kkt.ffd || '—')}</span></div>
+      <div class="info-row"><span class="info-key">Статус ФН</span><span class="info-val">${escHtml(kkt.fn_status || '—')}</span></div>
+    `;
+  } catch(e) {
+    document.getElementById('detail-kkt').innerHTML = '<div class="kkt-empty">Нет данных о кассе</div>';
+  }
+}
+
+async function refreshDetail() {
+  if (!currentAgentId) return;
+  await loadDetail(currentAgentId);
+  showToast('Данные обновлены', 'success');
+}
+
+// ── Commands ───────────────────────────────────────────────────────────────
+
+async function cmdReboot() {
+  if (!currentAgentId) return;
+  if (!confirm('Перезагрузить компьютер?')) return;
+  try {
+    await apiFetch('/api/agents/' + currentAgentId + '/command', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command: 'reboot' })
+    });
+    showToast('Команда перезагрузки отправлена', 'success');
+  } catch(e) {
+    showToast('Ошибка: ' + e.message, 'error');
+  }
+}
+
+async function cmdUpdate() {
+  if (!currentAgentId) return;
+  try {
+    await apiFetch('/api/agents/' + currentAgentId + '/command', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command: 'update' })
+    });
+    showToast('Обновление запущено', 'success');
+  } catch(e) {
+    showToast('Ошибка: ' + e.message, 'error');
+  }
+}
+
+// ── Screen ─────────────────────────────────────────────────────────────────
+
+function toggleScreen() {
+  if (screenActive) {
+    stopScreen();
+  } else {
+    startScreen();
+  }
+}
+
+function startScreen() {
+  if (!currentAgentId) return;
+  screenActive = true;
+  const preview = document.getElementById('screen-preview');
+  const placeholder = document.getElementById('screen-placeholder');
+  const img = document.getElementById('screen-img');
+  const btn = document.getElementById('btn-screen');
+  const btnR = document.getElementById('btn-screen-refresh');
+
+  preview.classList.add('active');
+  placeholder.style.display = 'none';
+  img.style.display = 'block';
+  btn.textContent = '■ Стоп';
+  btnR.style.display = 'inline-flex';
+
+  fetchScreen();
+  screenInterval = setInterval(fetchScreen, 3000);
+}
+
+function stopScreen() {
+  screenActive = false;
+  clearInterval(screenInterval);
+  screenInterval = null;
+
+  const btn = document.getElementById('btn-screen');
+  const btnR = document.getElementById('btn-screen-refresh');
+  const preview = document.getElementById('screen-preview');
+  const img = document.getElementById('screen-img');
+  const placeholder = document.getElementById('screen-placeholder');
+
+  if (btn) btn.textContent = '▶ Смотреть экран';
+  if (btnR) btnR.style.display = 'none';
+  if (preview) preview.classList.remove('active');
+  if (img) { img.style.display = 'none'; img.src = ''; }
+  if (placeholder) placeholder.style.display = 'block';
+}
+
+async function fetchScreen() {
+  if (!currentAgentId || !screenActive) return;
+  try {
+    const res = await fetch(API + '/api/agents/' + currentAgentId + '/screen', {
+      headers: { 'X-Pulse-Key': KEY }
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const img = document.getElementById('screen-img');
+    if (img && img.src) URL.revokeObjectURL(img.src);
+    if (img) img.src = url;
+  } catch(e) {
+    // silent
+  }
+}
+
+function refreshScreen() {
+  fetchScreen();
+}
+
+// ── Auto refresh ───────────────────────────────────────────────────────────
+
+function flashRefresh() {
+  const dot = document.getElementById('refresh-dot');
+  const time = document.getElementById('refresh-time');
+  dot.classList.add('active');
+  time.textContent = new Date().toLocaleTimeString('ru-RU', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  setTimeout(() => dot.classList.remove('active'), 500);
+}
+
+function startAutoRefresh() {
+  refreshTimer = setInterval(() => {
+    if (document.getElementById('page-dashboard').classList.contains('active')) {
+      loadAgents();
+    } else if (currentAgentId) {
+      loadDetail(currentAgentId);
+    }
+  }, 5000);
+}
+
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+
+loadAgents();
+startAutoRefresh();
+</script>
+</body>
+</html>

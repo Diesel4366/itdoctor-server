@@ -29,6 +29,7 @@ type AgentInfo struct {
 	ID          string    `json:"id"`
 	Hostname    string    `json:"hostname"`
 	IP          string    `json:"ip"`
+	VPNIP       string    `json:"vpn_ip,omitempty"`
 	Version     string    `json:"version"`
 	ConnectedAt time.Time `json:"connected_at"`
 	LastSeen    time.Time `json:"last_seen"`
@@ -40,6 +41,7 @@ func (a *Agent) Info() AgentInfo {
 		ID:          a.ID,
 		Hostname:    a.Hostname,
 		IP:          a.IP,
+		VPNIP:       wgMgr.GetVPNIP(a.ID),
 		Version:     a.Version,
 		ConnectedAt: a.ConnectedAt,
 		LastSeen:    a.LastSeen,
