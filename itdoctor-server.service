@@ -1,0 +1,18 @@
+[Unit]
+Description=IT-Doctor Server — WebSocket Hub
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/itdoctor-server
+ExecStart=/opt/itdoctor-server/itdoctor-server
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=itdoctor-server
+
+[Install]
+WantedBy=multi-user.target
