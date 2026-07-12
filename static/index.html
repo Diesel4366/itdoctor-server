@@ -1054,8 +1054,8 @@ function onCanvasMouseMove(e) {
   lastMoveTime = now;
   sendMouse('move', e, {});
 }
-function onCanvasMouseDown(e)  { sendMouse('mousedown', e, { button: ['left','middle','right'][e.button]||'left' }); }
-function onCanvasMouseUp(e)    { sendMouse('mouseup',   e, { button: ['left','middle','right'][e.button]||'left' }); }
+function onCanvasMouseDown(e)  { /* не отправляем — ждём mouseup чтобы сделать атомарный click */ }
+function onCanvasMouseUp(e)    { sendMouse('click', e, { button: ['left','middle','right'][e.button]||'left' }); }
 function onCanvasDblClick(e)   { sendMouse('double_click', e, {}); }
 function onCanvasRightClick(e) { e.preventDefault(); sendMouse('click', e, { button: 'right' }); }
 function onCanvasWheel(e) {
