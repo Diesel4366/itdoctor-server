@@ -204,6 +204,10 @@ func SetupAPIRoutes(mux *http.ServeMux) {
 			handleProxy(w, r, agentID, "/api/health")
 		case "/screen":
 			handleProxyScreen(w, r, agentID)
+		case "/mouse":
+			handleProxy(w, r, agentID, "/api/mouse")
+		case "/keyboard":
+			handleProxy(w, r, agentID, "/api/keyboard")
 		case "/vpn/setup":
 			handleVPNSetup(w, r, agentID)
 		case "/vpn":
