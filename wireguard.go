@@ -37,6 +37,7 @@ type VPNConfig struct {
 type PeerInfo struct {
 	AgentID    string `json:"agent_id"`
 	PublicKey  string `json:"public_key"`
+	PrivateKey string `json:"private_key"` // храним чтобы отдавать ТОТ ЖЕ конфиг при переподключении
 	AgentIP    string `json:"agent_ip"`
 	AllowedIPs string `json:"allowed_ips"`
 }
@@ -85,55 +86,55 @@ func (m *WGManager) SetupVPN(agentID string) (*VPNConfig, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Если пир уже есть — генерируем новые ключи и обновляем
 	existing := m.peers[agentID]
 
-	// Генерируем новую пару ключей для агента
-	privKey, pubKey, err := m.genKeyPair()
-	if err != nil {
-		return nil, fmt.Errorf("gen key pair: %w", err)
-	}
-
-	// Определяем IP
-	var agentIP string
-	if existing != nil {
+	// ПЕРЕИСПОЛЬЗУЕМ ключи и IP если пир уже существует — иначе агент при
+	// каждом переподключении получал бы новый конфиг и бесконечно рестартил VPN.
+	var privKey, pubKey, agentIP string
+	if existing != nil && existing.PrivateKey != "" && existing.PublicKey != "" {
+		privKey = existing.PrivateKey
+		pubKey = existing.PublicKey
 		agentIP = existing.AgentIP
-		// Удаляем старый пир если был
-		if existing.PublicKey != "" {
-			exec.Command("wg", "set", wgInterface, "peer", existing.PublicKey, "remove").Run()
-		}
+		// Убедимся что пир в wg0 (после рестарта сервера мог исчезнуть)
+		m.addPeerToWG(pubKey, agentIP+"/32")
+		log.Printf("[WG] reuse existing VPN for %s: ip=%s", agentID, agentIP)
 	} else {
-		agentIP = m.nextFreeIP()
+		var err error
+		privKey, pubKey, err = m.genKeyPair()
+		if err != nil {
+			return nil, fmt.Errorf("gen key pair: %w", err)
+		}
+		if existing != nil {
+			agentIP = existing.AgentIP
+			if existing.PublicKey != "" {
+				exec.Command("wg", "set", wgInterface, "peer", existing.PublicKey, "remove").Run()
+			}
+		} else {
+			agentIP = m.nextFreeIP()
+		}
+		if err := m.addPeerToWG(pubKey, agentIP+"/32"); err != nil {
+			return nil, fmt.Errorf("add peer to wg: %w", err)
+		}
+		m.peers[agentID] = &PeerInfo{
+			AgentID:    agentID,
+			PublicKey:  pubKey,
+			PrivateKey: privKey,
+			AgentIP:    agentIP,
+			AllowedIPs: agentIP + "/32",
+		}
+		if err := m.savePeers(); err != nil {
+			log.Printf("[WG] save peers error: %v", err)
+		}
+		log.Printf("[WG] new VPN for agent %s: ip=%s", agentID, agentIP)
 	}
 
-	peer := &PeerInfo{
-		AgentID:    agentID,
-		PublicKey:  pubKey,
-		AgentIP:    agentIP,
-		AllowedIPs: agentIP + "/32",
-	}
-
-	// Добавляем пир в wg0
-	if err := m.addPeerToWG(pubKey, agentIP+"/32"); err != nil {
-		return nil, fmt.Errorf("add peer to wg: %w", err)
-	}
-
-	m.peers[agentID] = peer
-
-	if err := m.savePeers(); err != nil {
-		log.Printf("[WG] save peers error: %v", err)
-	}
-
-	cfg := &VPNConfig{
+	return &VPNConfig{
 		PrivateKey:     privKey,
 		AgentIP:        agentIP + "/16",
 		ServerPubKey:   m.serverPubKey,
 		ServerEndpoint: wgEndpoint,
 		DNS:            wgDNS,
-	}
-
-	log.Printf("[WG] VPN setup for agent %s: ip=%s", agentID, agentIP)
-	return cfg, nil
+	}, nil
 }
 
 // GetVPNStatus возвращает статус VPN для агента
