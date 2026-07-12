@@ -562,16 +562,17 @@
     <div class="screen-section">
       <div class="screen-header">
         <span class="card-title" style="margin:0">Рабочий стол</span>
-        <div style="display:flex;gap:8px">
+        <div style="display:flex;gap:8px;align-items:center">
+          <span id="ctrl-badge" style="display:none;font-size:11px;color:#F97316;border:1px solid #F97316;border-radius:4px;padding:2px 7px">● Управление</span>
+          <button class="btn btn-secondary" id="btn-ctrl" onclick="toggleControl()" style="display:none">🖱 Управлять</button>
           <button class="btn btn-secondary" id="btn-screen" onclick="toggleScreen()">▶ Смотреть экран</button>
-          <button class="btn btn-secondary" id="btn-screen-refresh" onclick="refreshScreen()" style="display:none">↻</button>
         </div>
       </div>
       <div class="screen-preview" id="screen-preview">
         <div class="screen-placeholder" id="screen-placeholder">
           Нажмите "Смотреть экран" для захвата рабочего стола
         </div>
-        <img id="screen-img" src="" alt="" style="display:none;max-width:100%;border-radius:8px;">
+        <canvas id="screen-canvas" style="display:none;max-width:100%;border-radius:8px;cursor:crosshair;outline:none" tabindex="0"></canvas>
       </div>
     </div>
 
@@ -870,14 +871,17 @@ async function cmdUpdate() {
   }
 }
 
-// ── Screen ─────────────────────────────────────────────────────────────────
+// ── Screen + Remote Control ────────────────────────────────────────────────
+
+let controlActive = false;
+let realW = 0, realH = 0; // реальное разрешение экрана клиента
 
 function toggleScreen() {
-  if (screenActive) {
-    stopScreen();
-  } else {
-    startScreen();
-  }
+  if (screenActive) { stopScreen(); } else { startScreen(); }
+}
+
+function toggleControl() {
+  if (controlActive) { stopControl(); } else { startControl(); }
 }
 
 function startScreen() {
@@ -885,35 +889,36 @@ function startScreen() {
   screenActive = true;
   const preview = document.getElementById('screen-preview');
   const placeholder = document.getElementById('screen-placeholder');
-  const img = document.getElementById('screen-img');
+  const canvas = document.getElementById('screen-canvas');
   const btn = document.getElementById('btn-screen');
-  const btnR = document.getElementById('btn-screen-refresh');
+  const btnCtrl = document.getElementById('btn-ctrl');
 
   preview.classList.add('active');
   placeholder.style.display = 'none';
-  img.style.display = 'block';
+  canvas.style.display = 'block';
   btn.textContent = '■ Стоп';
-  btnR.style.display = 'inline-flex';
+  btnCtrl.style.display = 'inline-flex';
 
   fetchScreen();
-  screenInterval = setInterval(fetchScreen, 3000);
+  screenInterval = setInterval(fetchScreen, 1000);
 }
 
 function stopScreen() {
+  stopControl();
   screenActive = false;
   clearInterval(screenInterval);
   screenInterval = null;
 
   const btn = document.getElementById('btn-screen');
-  const btnR = document.getElementById('btn-screen-refresh');
+  const btnCtrl = document.getElementById('btn-ctrl');
   const preview = document.getElementById('screen-preview');
-  const img = document.getElementById('screen-img');
+  const canvas = document.getElementById('screen-canvas');
   const placeholder = document.getElementById('screen-placeholder');
 
   if (btn) btn.textContent = '▶ Смотреть экран';
-  if (btnR) btnR.style.display = 'none';
+  if (btnCtrl) { btnCtrl.style.display = 'none'; btnCtrl.textContent = '🖱 Управлять'; }
   if (preview) preview.classList.remove('active');
-  if (img) { img.style.display = 'none'; img.src = ''; }
+  if (canvas) canvas.style.display = 'none';
   if (placeholder) placeholder.style.display = 'block';
 }
 
@@ -923,20 +928,134 @@ async function fetchScreen() {
     const res = await fetch(API + '/api/agents/' + currentAgentId + '/screen', {
       headers: { 'X-Pulse-Key': KEY }
     });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
+    if (!res.ok) return;
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
-    const img = document.getElementById('screen-img');
-    if (img && img.src) URL.revokeObjectURL(img.src);
-    if (img) img.src = url;
-  } catch(e) {
-    // silent
-  }
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.getElementById('screen-canvas');
+      if (!canvas) return;
+      // Запоминаем реальное разрешение экрана
+      realW = img.naturalWidth;
+      realH = img.naturalHeight;
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      URL.revokeObjectURL(url);
+    };
+    img.src = url;
+  } catch(e) { /* silent */ }
 }
 
-function refreshScreen() {
-  fetchScreen();
+// ── Управление мышью ───────────────────────────────────────────────────────
+
+function startControl() {
+  controlActive = true;
+  const canvas = document.getElementById('screen-canvas');
+  const badge = document.getElementById('ctrl-badge');
+  const btn = document.getElementById('btn-ctrl');
+  if (badge) badge.style.display = 'inline';
+  if (btn) btn.textContent = '✕ Стоп управление';
+  canvas.focus();
+  canvas.addEventListener('mousemove',    onCanvasMouseMove);
+  canvas.addEventListener('mousedown',    onCanvasMouseDown);
+  canvas.addEventListener('mouseup',      onCanvasMouseUp);
+  canvas.addEventListener('dblclick',     onCanvasDblClick);
+  canvas.addEventListener('contextmenu',  onCanvasRightClick);
+  canvas.addEventListener('wheel',        onCanvasWheel, { passive: false });
+  canvas.addEventListener('keydown',      onCanvasKeyDown);
+  canvas.addEventListener('keyup',        onCanvasKeyUp);
+  // Блокируем контекстное меню браузера на canvas
+  canvas.oncontextmenu = e => e.preventDefault();
 }
+
+function stopControl() {
+  controlActive = false;
+  const canvas = document.getElementById('screen-canvas');
+  const badge = document.getElementById('ctrl-badge');
+  const btn = document.getElementById('btn-ctrl');
+  if (badge) badge.style.display = 'none';
+  if (btn) btn.textContent = '🖱 Управлять';
+  canvas.removeEventListener('mousemove',   onCanvasMouseMove);
+  canvas.removeEventListener('mousedown',   onCanvasMouseDown);
+  canvas.removeEventListener('mouseup',     onCanvasMouseUp);
+  canvas.removeEventListener('dblclick',    onCanvasDblClick);
+  canvas.removeEventListener('contextmenu', onCanvasRightClick);
+  canvas.removeEventListener('wheel',       onCanvasWheel);
+  canvas.removeEventListener('keydown',     onCanvasKeyDown);
+  canvas.removeEventListener('keyup',       onCanvasKeyUp);
+  canvas.oncontextmenu = null;
+}
+
+// Перевод координат canvas → реальные координаты экрана клиента
+function canvasToScreen(e) {
+  const canvas = document.getElementById('screen-canvas');
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = (realW || canvas.width)  / rect.width;
+  const scaleY = (realH || canvas.height) / rect.height;
+  return {
+    x: Math.round((e.clientX - rect.left) * scaleX),
+    y: Math.round((e.clientY - rect.top)  * scaleY)
+  };
+}
+
+function sendMouse(action, e, extra) {
+  if (!currentAgentId) return;
+  const {x, y} = canvasToScreen(e);
+  fetch(API + '/api/agents/' + currentAgentId + '/mouse', {
+    method: 'POST',
+    headers: { 'X-Pulse-Key': KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, x, y, ...extra })
+  }).catch(() => {});
+}
+
+function onCanvasMouseMove(e)   { sendMouse('move', e, {}); }
+function onCanvasMouseDown(e)   { sendMouse('mousedown', e, { button: ['left','middle','right'][e.button] || 'left' }); }
+function onCanvasMouseUp(e)     { sendMouse('mouseup',   e, { button: ['left','middle','right'][e.button] || 'left' }); }
+function onCanvasDblClick(e)    { sendMouse('double_click', e, {}); }
+function onCanvasRightClick(e)  { e.preventDefault(); sendMouse('click', e, { button: 'right' }); }
+function onCanvasWheel(e) {
+  e.preventDefault();
+  sendMouse('scroll', e, { delta: e.deltaY > 0 ? -3 : 3 });
+}
+
+// ── Управление клавиатурой ─────────────────────────────────────────────────
+
+// Маппинг browser key → виртуальный код Windows
+const VK = {
+  'Enter':13,'Backspace':8,'Tab':9,'Escape':27,'Delete':46,'Insert':45,
+  'Home':36,'End':35,'PageUp':33,'PageDown':34,
+  'ArrowLeft':37,'ArrowUp':38,'ArrowRight':39,'ArrowDown':40,
+  'Shift':16,'Control':17,'Alt':18,'Meta':91,'CapsLock':20,
+  'F1':112,'F2':113,'F3':114,'F4':115,'F5':116,'F6':117,
+  'F7':118,'F8':119,'F9':120,'F10':121,'F11':122,'F12':123,
+  ' ':32
+};
+
+function getVK(e) {
+  if (VK[e.key] !== undefined) return VK[e.key];
+  if (e.key.length === 1) return e.key.toUpperCase().charCodeAt(0);
+  return 0;
+}
+
+function sendKey(action, e) {
+  if (!currentAgentId) return;
+  // Не перехватываем системные комбинации браузера (F5, Ctrl+T и т.д.)
+  // кроме тех что нужны для управления (Ctrl+C, Ctrl+V, Ctrl+Z и т.д.)
+  if (e.key === 'F5' && !controlActive) return;
+  e.preventDefault();
+  const vk = getVK(e);
+  if (!vk) return;
+  fetch(API + '/api/agents/' + currentAgentId + '/keyboard', {
+    method: 'POST',
+    headers: { 'X-Pulse-Key': KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, vk })
+  }).catch(() => {});
+}
+
+function onCanvasKeyDown(e) { sendKey('keydown', e); }
+function onCanvasKeyUp(e)   { sendKey('keyup',   e); }
 
 // ── Auto refresh ───────────────────────────────────────────────────────────
 
