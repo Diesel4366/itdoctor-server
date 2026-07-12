@@ -108,6 +108,28 @@ func (h *Hub) ServeAgentWS(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("[WS] agent connected: %s (%s) v%s from %s", agent.Hostname, agent.ID, agent.Version, realIP)
 
+	// Автоматически выдаём VPN конфиг агенту после подключения
+	go func() {
+		vpnCfg, err := wgMgr.SetupVPN(agent.ID)
+		if err != nil {
+			log.Printf("[WG] setup VPN for %s: %v", agent.Hostname, err)
+			return
+		}
+		cfgJSON, err := json.Marshal(vpnCfg)
+		if err != nil {
+			return
+		}
+		msg := WSMessage{
+			Type: "vpn_config",
+			Body: cfgJSON,
+		}
+		if err := agent.Send(msg); err != nil {
+			log.Printf("[WG] send vpn_config to %s: %v", agent.Hostname, err)
+			return
+		}
+		log.Printf("[WG] sent vpn_config to %s, ip=%s", agent.Hostname, vpnCfg.AgentIP)
+	}()
+
 	// Запускаем ping-loop
 	go h.pingLoop(agent)
 
