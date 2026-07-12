@@ -952,6 +952,7 @@ async function fetchScreen() {
 
 function startControl() {
   controlActive = true;
+  openControlWS(); // открываем WS канал для событий
   const canvas = document.getElementById('screen-canvas');
   const badge = document.getElementById('ctrl-badge');
   const btn = document.getElementById('btn-ctrl');
@@ -972,6 +973,7 @@ function startControl() {
 
 function stopControl() {
   controlActive = false;
+  closeControlWS();
   const canvas = document.getElementById('screen-canvas');
   const badge = document.getElementById('ctrl-badge');
   const btn = document.getElementById('btn-ctrl');
@@ -1000,21 +1002,62 @@ function canvasToScreen(e) {
   };
 }
 
-function sendMouse(action, e, extra) {
+// ── WebSocket канал управления (мышь + клавиатура без HTTP-задержек) ────────
+
+let ctrlWS = null;
+let ctrlWSReady = false;
+let lastMoveTime = 0;
+const MOVE_THROTTLE_MS = 50; // не чаще 20 раз/сек
+
+function openControlWS() {
+  if (ctrlWS && ctrlWS.readyState <= 1) return; // уже открыт или открывается
+  const wsUrl = API.replace(/^http/, 'ws') + '/api/agents/' + currentAgentId + '/control';
+  ctrlWS = new WebSocket(wsUrl + '?key=' + encodeURIComponent(KEY));
+  ctrlWS.binaryType = 'arraybuffer';
+  ctrlWS.onopen  = () => { ctrlWSReady = true; };
+  ctrlWS.onclose = () => { ctrlWSReady = false; ctrlWS = null;
+    if (controlActive) setTimeout(openControlWS, 1000); // реконнект
+  };
+  ctrlWS.onerror = () => { ctrlWSReady = false; };
+}
+
+function closeControlWS() {
+  ctrlWSReady = false;
+  if (ctrlWS) { ctrlWS.close(); ctrlWS = null; }
+}
+
+// Отправить событие: сначала пробуем WS, fallback → HTTP
+function sendCtrl(payload) {
   if (!currentAgentId) return;
-  const {x, y} = canvasToScreen(e);
-  fetch(API + '/api/agents/' + currentAgentId + '/mouse', {
+  if (ctrlWSReady && ctrlWS) {
+    ctrlWS.send(JSON.stringify(payload));
+    return;
+  }
+  // Fallback: HTTP (медленнее, но надёжно пока WS не поднят)
+  const isKey = payload.key !== undefined;
+  const path  = isKey ? '/keyboard' : '/mouse';
+  fetch(API + '/api/agents/' + currentAgentId + path, {
     method: 'POST',
     headers: { 'X-Pulse-Key': KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action, x, y, ...extra })
+    body: JSON.stringify(payload)
   }).catch(() => {});
 }
 
-function onCanvasMouseMove(e)   { sendMouse('move', e, {}); }
-function onCanvasMouseDown(e)   { sendMouse('mousedown', e, { button: ['left','middle','right'][e.button] || 'left' }); }
-function onCanvasMouseUp(e)     { sendMouse('mouseup',   e, { button: ['left','middle','right'][e.button] || 'left' }); }
-function onCanvasDblClick(e)    { sendMouse('double_click', e, {}); }
-function onCanvasRightClick(e)  { e.preventDefault(); sendMouse('click', e, { button: 'right' }); }
+function sendMouse(action, e, extra) {
+  const {x, y} = canvasToScreen(e);
+  sendCtrl({ action, x, y, ...extra });
+}
+
+function onCanvasMouseMove(e) {
+  const now = Date.now();
+  if (now - lastMoveTime < MOVE_THROTTLE_MS) return; // throttle
+  lastMoveTime = now;
+  sendMouse('move', e, {});
+}
+function onCanvasMouseDown(e)  { sendMouse('mousedown', e, { button: ['left','middle','right'][e.button]||'left' }); }
+function onCanvasMouseUp(e)    { sendMouse('mouseup',   e, { button: ['left','middle','right'][e.button]||'left' }); }
+function onCanvasDblClick(e)   { sendMouse('double_click', e, {}); }
+function onCanvasRightClick(e) { e.preventDefault(); sendMouse('click', e, { button: 'right' }); }
 function onCanvasWheel(e) {
   e.preventDefault();
   sendMouse('scroll', e, { delta: e.deltaY > 0 ? -3 : 3 });
@@ -1022,13 +1065,12 @@ function onCanvasWheel(e) {
 
 // ── Управление клавиатурой ─────────────────────────────────────────────────
 
-// Маппинг browser e.key → строка которую ожидает агент (keyToVK в screen.go)
 const KEY_MAP = {
-  'Enter':'enter', 'Backspace':'backspace', 'Tab':'tab', 'Escape':'escape',
-  'Delete':'delete', 'Insert':'insert', 'Home':'home', 'End':'end',
-  'PageUp':'pageup', 'PageDown':'pagedown',
-  'ArrowLeft':'left', 'ArrowUp':'up', 'ArrowRight':'right', 'ArrowDown':'down',
-  'Shift':'shift', 'Control':'ctrl', 'Alt':'alt', 'Meta':'win', 'CapsLock':'capslock',
+  'Enter':'enter','Backspace':'backspace','Tab':'tab','Escape':'escape',
+  'Delete':'delete','Insert':'insert','Home':'home','End':'end',
+  'PageUp':'pageup','PageDown':'pagedown',
+  'ArrowLeft':'left','ArrowUp':'up','ArrowRight':'right','ArrowDown':'down',
+  'Shift':'shift','Control':'ctrl','Alt':'alt','Meta':'win','CapsLock':'capslock',
   'F1':'f1','F2':'f2','F3':'f3','F4':'f4','F5':'f5','F6':'f6',
   'F7':'f7','F8':'f8','F9':'f9','F10':'f10','F11':'f11','F12':'f12',
   ' ':'space'
@@ -1036,20 +1078,15 @@ const KEY_MAP = {
 
 function getKeyStr(e) {
   if (KEY_MAP[e.key]) return KEY_MAP[e.key];
-  if (e.key.length === 1) return e.key.toLowerCase(); // буквы и цифры
+  if (e.key.length === 1) return e.key.toLowerCase();
   return null;
 }
 
 function sendKey(action, e) {
-  if (!currentAgentId) return;
   e.preventDefault();
   const key = getKeyStr(e);
   if (!key) return;
-  fetch(API + '/api/agents/' + currentAgentId + '/keyboard', {
-    method: 'POST',
-    headers: { 'X-Pulse-Key': KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action, key })
-  }).catch(() => {});
+  sendCtrl({ action, key });
 }
 
 function onCanvasKeyDown(e) { sendKey('keydown', e); }
