@@ -1022,35 +1022,33 @@ function onCanvasWheel(e) {
 
 // ── Управление клавиатурой ─────────────────────────────────────────────────
 
-// Маппинг browser key → виртуальный код Windows
-const VK = {
-  'Enter':13,'Backspace':8,'Tab':9,'Escape':27,'Delete':46,'Insert':45,
-  'Home':36,'End':35,'PageUp':33,'PageDown':34,
-  'ArrowLeft':37,'ArrowUp':38,'ArrowRight':39,'ArrowDown':40,
-  'Shift':16,'Control':17,'Alt':18,'Meta':91,'CapsLock':20,
-  'F1':112,'F2':113,'F3':114,'F4':115,'F5':116,'F6':117,
-  'F7':118,'F8':119,'F9':120,'F10':121,'F11':122,'F12':123,
-  ' ':32
+// Маппинг browser e.key → строка которую ожидает агент (keyToVK в screen.go)
+const KEY_MAP = {
+  'Enter':'enter', 'Backspace':'backspace', 'Tab':'tab', 'Escape':'escape',
+  'Delete':'delete', 'Insert':'insert', 'Home':'home', 'End':'end',
+  'PageUp':'pageup', 'PageDown':'pagedown',
+  'ArrowLeft':'left', 'ArrowUp':'up', 'ArrowRight':'right', 'ArrowDown':'down',
+  'Shift':'shift', 'Control':'ctrl', 'Alt':'alt', 'Meta':'win', 'CapsLock':'capslock',
+  'F1':'f1','F2':'f2','F3':'f3','F4':'f4','F5':'f5','F6':'f6',
+  'F7':'f7','F8':'f8','F9':'f9','F10':'f10','F11':'f11','F12':'f12',
+  ' ':'space'
 };
 
-function getVK(e) {
-  if (VK[e.key] !== undefined) return VK[e.key];
-  if (e.key.length === 1) return e.key.toUpperCase().charCodeAt(0);
-  return 0;
+function getKeyStr(e) {
+  if (KEY_MAP[e.key]) return KEY_MAP[e.key];
+  if (e.key.length === 1) return e.key.toLowerCase(); // буквы и цифры
+  return null;
 }
 
 function sendKey(action, e) {
   if (!currentAgentId) return;
-  // Не перехватываем системные комбинации браузера (F5, Ctrl+T и т.д.)
-  // кроме тех что нужны для управления (Ctrl+C, Ctrl+V, Ctrl+Z и т.д.)
-  if (e.key === 'F5' && !controlActive) return;
   e.preventDefault();
-  const vk = getVK(e);
-  if (!vk) return;
+  const key = getKeyStr(e);
+  if (!key) return;
   fetch(API + '/api/agents/' + currentAgentId + '/keyboard', {
     method: 'POST',
     headers: { 'X-Pulse-Key': KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action, vk })
+    body: JSON.stringify({ action, key })
   }).catch(() => {});
 }
 
