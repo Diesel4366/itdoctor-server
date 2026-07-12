@@ -36,8 +36,8 @@ func handleControlWS(w http.ResponseWriter, r *http.Request, agentID string) {
 		return
 	}
 
-	agent := hub.GetAgent(agentID)
-	if agent == nil {
+	agent, ok := hub.GetAgent(agentID)
+	if !ok || agent == nil {
 		http.Error(w, "agent not found", http.StatusNotFound)
 		return
 	}
@@ -83,11 +83,11 @@ func handleControlWS(w http.ResponseWriter, r *http.Request, agentID string) {
 
 			// Проксируем к агенту через WebSocket туннель — fire and forget
 			go func(p string, body []byte) {
-				agent := hub.GetAgent(agentID)
-				if agent == nil {
+				a, ok := hub.GetAgent(agentID)
+				if !ok || a == nil {
 					return
 				}
-				ProxyRequest(agent, "POST", p, body)
+				ProxyRequest(a, "POST", p, body)
 			}(path, msg)
 		}
 	}()
